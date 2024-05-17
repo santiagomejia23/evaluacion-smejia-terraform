@@ -166,7 +166,7 @@ resource "aws_instance" "terraform-example" {
               EOF
 
   tags = {
-    Name     = "evalucion_sm"
+    Name     = "evaluacion_sm"
     username = "smejia"
   }
 
@@ -289,3 +289,81 @@ target_id        = aws_instance.terraform-example.id
 port             = 80
 }
 
+#####---------------cognito, api gw y lambda-----------------------------
+
+resource "aws_cognito_user_pool" "avaluacion_sm" {
+  name = "avaluacion_sm_user_pool"
+}
+
+resource "aws_cognito_user_pool_client" "avaluacion_sm" {
+  user_pool_id = aws_cognito_user_pool.avaluacion_sm.id
+  name         = "avaluacion_sm_client"
+}
+
+resource "aws_cognito_user_pool_domain" "avaluacion_sm" {
+  domain       = "avaluacion-sm-domain"
+  user_pool_id = aws_cognito_user_pool.avaluacion_sm.id
+}
+
+resource "aws_apigatewayv2_authorizer" "avaluacion_sm" {
+  api_id           = aws_apigatewayv2_api.avaluacion_sm.id
+  authorizer_type  = "JWT"
+  identity_sources = ["$request.header.Authorization"]
+  name             = "avaluacion_sm_authorizer"
+
+  jwt_configuration {
+    audience = [aws_cognito_user_pool_client.avaluacion_sm.id]
+    issuer   = "https://cognito-idp.${var.region}.amazonaws.com/${aws_cognito_user_pool.avaluacion_sm.id}"
+  }
+}
+
+resource "aws_lambda_function" "avaluacion_sm" {
+  function_name = "avaluacion_sm_function"
+  role          = aws_iam_role.lambda_exec.arn
+  handler       = "index.handler"
+  runtime       = "nodejs20.x"  # Actualizado a nodejs20.x
+
+  filename      = "${path.module}/lambda_function_payload.zip"
+
+  source_code_hash = filebase64sha256("${path.module}/lambda_function_payload.zip")
+}
+
+resource "aws_iam_role" "lambda_exec" {
+  name = "lambda_exec_role"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17",
+    Statement = [{
+      Action = "sts:AssumeRole",
+      Effect = "Allow",
+      Principal = {
+        Service = "lambda.amazonaws.com"
+      }
+    }]
+  })
+}
+
+resource "aws_iam_role_policy_attachment" "lambda_exec_policy" {
+  role       = aws_iam_role.lambda_exec.name
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+}
+
+resource "aws_apigatewayv2_api" "avaluacion_sm" {
+  name          = "avaluacion_sm_api"
+  protocol_type = "HTTP"
+}
+
+resource "aws_apigatewayv2_route" "avaluacion_sm" {
+  api_id    = aws_apigatewayv2_api.avaluacion_sm.id
+  route_key = "GET /avaluacion_sm"
+
+  authorization_type     = "JWT"
+  authorizer_id          = aws_apigatewayv2_authorizer.avaluacion_sm.id
+  target                 = "integrations/${aws_apigatewayv2_integration.avaluacion_sm.id}"
+}
+
+resource "aws_apigatewayv2_integration" "avaluacion_sm" {
+  api_id           = aws_apigatewayv2_api.avaluacion_sm.id
+  integration_type = "AWS_PROXY"
+  integration_uri  = "arn:aws:apigateway:${var.region}:lambda:path/2015-03-31/functions/${aws_lambda_function.avaluacion_sm.arn}/invocations"
+}
