@@ -1,0 +1,6 @@
+./*/*/.terraform*
+./*/*/plan
+
+.terraform*
+.plan
+.idea/
