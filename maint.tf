@@ -124,7 +124,7 @@ resource "aws_subnet" "subnet1" {
 }
 
 resource "aws_security_group" "my_security_group" {
-  name        = "mi-grupo-de-seguridad"
+  name        = "evalucion_sm"
   description = "Reglas de seguridad para la instancia EC2"
   vpc_id      = aws_vpc.my_vpc.id
 
@@ -217,3 +217,75 @@ resource "aws_cloudwatch_log_stream" "my_log_stream" {
   log_group_name = aws_cloudwatch_log_group.my_log_group.name
 
 }
+
+###----------------------HASTA ACA VAMOS BIEN objetivo de la prueba--------------------
+#--- creo la segunda subnet y el balanceador de carga-------------
+
+resource "aws_subnet" "subnet2" {
+  vpc_id                  = aws_vpc.my_vpc.id
+  cidr_block              = "10.0.2.0/24"
+  availability_zone       = "us-east-1b"
+  map_public_ip_on_launch = false
+
+  tags = {
+    Name     = "subnet_evalu_SM2"
+    username = "smejia"
+  }
+}
+
+resource "aws_lb" "load_balancer" {
+name               = "sm-load-balancer"
+internal           = false
+load_balancer_type = "application"
+security_groups    = [aws_security_group.my_security_group.id]
+subnets            = [aws_subnet.subnet1.id, aws_subnet.subnet2.id]
+
+tags = {
+Name     = "sm-load-balancer"
+username = "smejia"
+  }
+}
+
+resource "aws_lb_listener" "http" {
+load_balancer_arn = aws_lb.load_balancer.arn
+port              = "80"
+protocol          = "HTTP"
+
+default_action {
+type             = "forward"
+target_group_arn = aws_lb_target_group.my_target_group.arn
+}
+
+tags = {
+Name     = "sm-lb-listener"
+username = "smejia"
+}
+}
+
+resource "aws_lb_target_group" "my_target_group" {
+name     = "sm-target-group"
+port     = 80
+protocol = "HTTP"
+vpc_id   = aws_vpc.my_vpc.id
+
+health_check {
+path                = "/"
+interval            = 30
+timeout             = 5
+healthy_threshold   = 2
+unhealthy_threshold = 2
+matcher             = "200"
+}
+
+tags = {
+Name     = "sm-target-group"
+username = "smejia"
+}
+}
+
+resource "aws_lb_target_group_attachment" "ec2_attachment" {
+target_group_arn = aws_lb_target_group.my_target_group.arn
+target_id        = aws_instance.terraform-example.id
+port             = 80
+}
+
